@@ -1,5 +1,4 @@
-import socket
-import json
+import socket, json, httplib, urllib
 
 # Receives JSON input and may provide output based on the parameters.
 # instruction:<str>, determines which instruction of the port api to use...
@@ -24,7 +23,7 @@ import json
 #	close:	protocol,instruction,category
 #	put:	protocol,instruction,portNumber,ipAddress,message
 #	get:	protocol,instruction,category
-def cppInterface(input):
+def cppPortInterface(input):
 	parsedInput = json.loads(input)
 	p,i = parsedInput["protocol"],parsedInput["instruction"]
 	if p == "UDP":
@@ -49,6 +48,41 @@ def cppInterface(input):
 		return "bad instruction"
 	return "bad protocol"
 
+HTTPConnections = {}
+# Receives JSON input and will provide the output at the endpoint.
+#	{"destination":<str>,"handle":<str>,"parameters":{"<parameterName>":<parameterValue>,...}}
+#	parameters are optional, if they are provided it will use a POST request, otherwise GET is used.
+#	HEAD will automatically be used to check the liveness of connections.
+def cppHTTPInterface(input):
+	global HTTPConnections
+	parsedInput = json.loads(input)
+	dst = parsedInput["destination"]
+	handle = parsedInput["handle"]
+	# Create Connection if a connection hasn't been made yet.
+	if HTTPConnections.get(dst) == None:
+		HTTPConnections[dst] = httplib.HTTPSConnection(dst)
+	# Make sure that a connection is still active.
+	try:
+		HTTPConnections[dst].request("HEAD","/")
+		testResponse = HTTPConnections[dst].getresponse()
+		testResponse.read()
+		#If bad status code received try to reconnect.
+		if testResponse.status != 200:
+			HTTPConnections[dst] = httplib.HTTPSConnection(dst)		
+	except:
+		HTTPConnections[dst] = httplib.HTTPSConnection(dst)		
+	# POST Case
+	if parsedInput.get("parameters"):
+		params = urllib.urlencode(parsedInput["parameters"])
+		headers = {"Content-type": "application/json", "Accept": "application/json"}
+		HTTPConnections[dst].request("POST", handle, params, headers)
+	# GET Case
+	else:
+		HTTPConnections[dst].request("GET",handle)
+	response = HTTPConnections[dst].getresponse()
+	data = response.read()
+	return (json.dumps({"data":data,"status":response.status,"reason":response.reason})).replace("\\n","").replace("\\","")
+		
 UDP = {}
 TCP = {}
 	
@@ -149,3 +183,4 @@ def closeTCPPort(name):
 	TCP[name].close()
 	del TCP[name]
 	return ""
+
