@@ -1,11 +1,59 @@
 import socket
 import json
 
+# Receives JSON input and may provide output based on the parameters.
+# instruction:<str>, determines which instruction of the port api to use...
+#	open: open a TCP/UDP port to be used
+#	close:closes a TCP port or UDP category.
+#   put:  sends data to a remote TCP/UDP port
+#	get:  receives data sent to a local TCP port or UDP category.
+# protocol:<str>, UDP | TCP
+# category:<str>, the unique name to be used when referring to a local port.
+#	required for open,close,get
+# portNumber:<int>, the local or remote port number to refer to.
+#	required for open,put
+# connections:<int>, the amount of possible connections servable from a TCP port.
+#	required for TCP open
+# ipAddress:<str>, the destination ip address
+#	required for put
+# message:<str>, the message to send to the destination.
+#	required for put.
+#
+# Cheat Sheet
+#	open:	protocol,instruction,category,portNumber,connections(TCP only)
+#	close:	protocol,instruction,category
+#	put:	protocol,instruction,portNumber,ipAddress,message
+#	get:	protocol,instruction,category
+def cppInterface(input):
+	parsedInput = json.loads(input)
+	p,i = parsedInput["protocol"],parsedInput["instruction"]
+	if p == "UDP":
+		if i == "open":
+			return registerUDPPort(input)
+		if i == "close":
+			return flushUDPPorts(parsedInput["category"])
+		if i == "put":
+			return sendUDP(input)
+		if i == "get":
+			return receiveUDP(parsedInput["category"])
+		return "bad instruction"
+	if p == "TCP":
+		if i == "open":
+			return registerTCPPort(input)
+		if i == "close":
+			return closeTCPPort(parsedInput["category"])
+		if i == "put":
+			return sendTCP(input)
+		if i == "get":
+			return receiveTCP(parsedInput["category"])
+		return "bad instruction"
+	return "bad protocol"
+
 UDP = {}
 TCP = {}
 	
 # Accepts JSON Input...
-# Category:<str> ,  an identifier that ties a port to a group.
+# category:<str> ,  an identifier that ties a port to a group.
 # portNumber:<int>, the actual port number to register.
 def registerUDPPort(input):
 	global UDP
@@ -21,7 +69,7 @@ def registerUDPPort(input):
 	return ""
 
 # Accepts JSON Input...
-# Category:<str> ,  an identifier that can be used to access the port.
+# category:<str> ,  an identifier that can be used to access the port.
 # portNumber:<int>, the actual port number to register.
 # connections:<int>, the maximum amount of connections to hold onto.
 def registerTCPPort(input):
@@ -42,7 +90,7 @@ def sendUDP(input):
 	parsedInput = json.loads(input)
 	ipAddress,portNumber,msg = parsedInput["ipAddress"], parsedInput["portNumber"], parsedInput["message"]
 	udpsocket = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-	udpsocket.sendto(msg,(ipAddress,portNumber))
+	udpsocket.sendto(msg.encode(),(ipAddress,portNumber))
 	return ""
 
 # Accepts JSON Input...
@@ -55,7 +103,7 @@ def sendTCP(input):
 	tcpsocket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
 	tcpsocket.settimeout(0.0001)
 	tcpsocket.connect((ipAddress,portNumber))
-	tcpsocket.send(msg)
+	tcpsocket.send(msg.encode())
 	return ""
 
 # Outputs JSON Array
@@ -68,7 +116,7 @@ def receiveUDP(category):
 	for port in UDP[category]:
 		try: 
 			data, addr = port.recvfrom(1024)
-			result += [{"data":str(data),"ip":str(addr[0]),"port":addr[1]}]
+			result += [{"data":data.decode(),"ip":str(addr[0]),"port":addr[1]}]
 		except socket.timeout:
 			pass
 	return json.dumps(result)
@@ -81,18 +129,21 @@ def receiveTCP(name):
 	try:
 		conn, addr = TCP[name].accept()
 		data = conn.recv(1024)
-		return json.dumps({"data":str(data),"ip":str(addr[0]),"port":addr[1]})
+		return json.dumps({"data":data.decode(),"ip":str(addr[0]),"port":addr[1]})
 	except socket.timeout:
 		pass
 	return ""	
 
+# Closes an entire UDP category.
 def flushUDPPorts(category):
 	global UDP
-	for port in UDP:
-		port.close()
-	UDP[category] = []
+	for key in UDP:
+		for port in UDP[key]:
+			port.close()
+	del UDP[category]
 	return ""
-	
+
+# Closes a TCP port	
 def closeTCPPort(name):
 	global TCP
 	TCP[name].close()
