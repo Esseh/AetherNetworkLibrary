@@ -35,7 +35,7 @@ def cppPortInterface(input):
 			return sendUDP(input)
 		if i == "get":
 			return receiveUDP(parsedInput["category"])
-		return "bad instruction"
+		raise Exception("BAD INSTRUCTION")
 	if p == "TCP":
 		if i == "open":
 			return registerTCPPort(input)
@@ -45,8 +45,8 @@ def cppPortInterface(input):
 			return sendTCP(input)
 		if i == "get":
 			return receiveTCP(parsedInput["category"])
-		return "bad instruction"
-	return "bad protocol"
+		raise Exception("BAD INSTRUCTION")
+	raise Exception("BAD PROTOCOL")
 
 HTTPConnections = {}
 # Receives JSON input and will provide the output at the endpoint.
